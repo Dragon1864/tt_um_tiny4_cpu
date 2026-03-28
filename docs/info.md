@@ -1,20 +1,48 @@
-<!---
+# 4-bit Tiny CPU
 
-This file is used to generate your project datasheet. Please fill in the information below and delete any unused
-sections.
+## What is this?
+This project implements a simple 4-bit accumulator-based CPU designed for Tiny Tapeout.
 
-You can also include images in this folder and reference them in the markdown. Each image must be less than
-512 kb in size, and the combined size of all images must be less than 1 MB.
--->
+It includes:
+- 4-bit accumulator
+- 4-bit program counter
+- Instruction memory (16 x 8)
+- Data memory (16 x 4)
+- FSM-based control unit
+- ALU supporting arithmetic and branching
+
+---
 
 ## How it works
+The CPU operates using a simple fetch-execute-writeback cycle:
 
-Explain how your project works
+1. **Fetch**: Instruction is read from instruction memory using the program counter (PC)
+2. **Execute**: Instruction is decoded and operation is performed
+3. **Writeback**: Results are stored and PC is updated
+
+Supported instructions:
+- `LDA` – Load accumulator from memory
+- `STA` – Store accumulator to memory
+- `ADD` – Add memory value to accumulator
+- `SUB` – Subtract memory value from accumulator
+- `JMP` – Unconditional jump
+- `JZ`  – Jump if zero flag is set
+- `JC`  – Jump if carry flag is set
+
+The default program increments a value stored in memory continuously.
+
+---
 
 ## How to test
+The CPU runs automatically after reset.
 
-Explain how to use your project
+- Apply clock and release reset
+- Observe `uo_out[3:0]` → accumulator value
+- Observe `uio_out` → program counter and flags
+
+The accumulator should increment over time as the program executes.
+
+---
 
 ## External hardware
-
-List external hardware used in your project (e.g. PMOD, LED display, etc), if any
+No external hardware is required.
