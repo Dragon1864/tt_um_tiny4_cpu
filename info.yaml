@@ -2,22 +2,18 @@
 project:
   title:        "4-bit Tiny CPU"
   author:       "Garv R Jain"
-  discord:      ""  
-  description:  "A 4-bit accumulator-based CPU with FSM control, ALU operations, and branching instructions"
+  discord:      ""
+  description:  "A 4-bit accumulator-based CPU with ALU operations and branching support"
   language:     "Verilog"
   clock_hz:     100000000
 
-  # Tile size (keep 1x1 for your design)
   tiles: "1x1"
 
-  # MUST match your Verilog module name
   top_module:  "tt_um_tiny4_cpu"
 
-  # Source files inside ./src
   source_files:
     - "project.v"
 
-# Pinout (mapped to your CPU signals)
 pinout:
   # Inputs
   ui[0]: "Instruction bit 0"
@@ -39,7 +35,7 @@ pinout:
   uo[6]: "0"
   uo[7]: "0"
 
-  # Bidirectional pins (used as outputs in your design)
+  # Bidirectional
   uio[0]: "PC[0]"
   uio[1]: "PC[1]"
   uio[2]: "PC[2]"
@@ -49,5 +45,4 @@ pinout:
   uio[6]: "Unused"
   uio[7]: "Unused"
 
-# Do not change!
 yaml_version: 6
