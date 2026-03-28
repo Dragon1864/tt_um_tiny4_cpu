@@ -1,3 +1,8 @@
+import cocotb
+from cocotb.clock import Clock
+from cocotb.triggers import ClockCycles
+
+
 @cocotb.test()
 async def test_project(dut):
     dut._log.info("Start")
@@ -16,13 +21,11 @@ async def test_project(dut):
 
     dut._log.info("Running CPU")
 
-    # Let CPU run for some cycles
+    # Let CPU run
     await ClockCycles(dut.clk, 20)
 
-    # Basic sanity check (DO NOT expect fixed value like 50)
     acc_val = dut.uo_out.value.integer
-
     dut._log.info(f"ACC = {acc_val}")
 
-    # Just check it's valid (not X or undefined)
+    # Simple check
     assert acc_val >= 0
