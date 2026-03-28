@@ -2,7 +2,7 @@
 // Target: < 1000 gates
 // Harvard Architecture with 8-bit instructions
 
-module tt_um_tiny4_cpu (
+module tiny4_cpu (
     input  wire       clk,
     input  wire       rst_n,
     input  wire [7:0] ui_in,      // Instruction input (for Tiny Tapeout)
@@ -13,12 +13,56 @@ module tt_um_tiny4_cpu (
     input  wire       ena         // Enable
 );
 
-    // Instruction ROM (16 instructions x 8 bits)
-    // Pre-loaded with a simple test program
-    reg [7:0] instr_mem [0:15];
+    // Instruction ROM (combinational logic - synthesizable!)
+    // This replaces the initial block which doesn't work in real hardware
+    reg [7:0] instr_rom;
+    always @(*) begin
+        case (pc)
+            // Simple counter program: increments from 0 to 15
+            4'd0:  instr_rom = 8'b00100000;  // LDA [0]   - Load counter
+            4'd1:  instr_rom = 8'b01100001;  // ADD [1]   - Add 1
+            4'd2:  instr_rom = 8'b01000000;  // STA [0]   - Store back
+            4'd3:  instr_rom = 8'b10100000;  // JMP 0     - Loop
+            4'd4:  instr_rom = 8'b00000000;  // NOP
+            4'd5:  instr_rom = 8'b00000000;  // NOP
+            4'd6:  instr_rom = 8'b00000000;  // NOP
+            4'd7:  instr_rom = 8'b00000000;  // NOP
+            4'd8:  instr_rom = 8'b00000000;  // NOP
+            4'd9:  instr_rom = 8'b00000000;  // NOP
+            4'd10: instr_rom = 8'b00000000;  // NOP
+            4'd11: instr_rom = 8'b00000000;  // NOP
+            4'd12: instr_rom = 8'b00000000;  // NOP
+            4'd13: instr_rom = 8'b00000000;  // NOP
+            4'd14: instr_rom = 8'b00000000;  // NOP
+            4'd15: instr_rom = 8'b00000000;  // NOP
+            default: instr_rom = 8'b00000000; // Default to NOP
+        endcase
+    end
     
-    // Data RAM (16 locations x 4 bits)
+    // Data RAM (16 locations x 4 bits) - writable memory
     reg [3:0] data_mem [0:15];
+    
+    // Initialize data memory (this DOES work in simulation for testing)
+    // In real hardware, memory will power up to random values
+    // The program should initialize any needed values
+    initial begin
+        data_mem[0] = 4'h0;  // Counter value
+        data_mem[1] = 4'h1;  // Constant 1
+        data_mem[2] = 4'h0;
+        data_mem[3] = 4'h0;
+        data_mem[4] = 4'h0;
+        data_mem[5] = 4'h0;
+        data_mem[6] = 4'h0;
+        data_mem[7] = 4'h0;
+        data_mem[8] = 4'h0;
+        data_mem[9] = 4'h0;
+        data_mem[10] = 4'h0;
+        data_mem[11] = 4'h0;
+        data_mem[12] = 4'h0;
+        data_mem[13] = 4'h0;
+        data_mem[14] = 4'h0;
+        data_mem[15] = 4'h0;
+    end
     
     // CPU Registers
     reg [3:0] acc;          // Accumulator
@@ -60,46 +104,6 @@ module tt_um_tiny4_cpu (
     assign alu_out = alu_result[3:0];
     assign alu_carry = alu_result[4];
     
-    // Initialize instruction memory with a test program
-    // Program: Count from 0 to 15 in memory location 0
-    initial begin
-        // Simple counter program
-        instr_mem[0]  = 8'b00100000;  // LDA [0]   - Load counter
-        instr_mem[1]  = 8'b01100001;  // ADD [1]   - Add 1
-        instr_mem[2]  = 8'b01000000;  // STA [0]   - Store back
-        instr_mem[3]  = 8'b10100000;  // JMP 0     - Loop
-        instr_mem[4]  = 8'b00000000;  // NOP
-        instr_mem[5]  = 8'b00000000;  // NOP
-        instr_mem[6]  = 8'b00000000;  // NOP
-        instr_mem[7]  = 8'b00000000;  // NOP
-        instr_mem[8]  = 8'b00000000;  // NOP
-        instr_mem[9]  = 8'b00000000;  // NOP
-        instr_mem[10] = 8'b00000000;  // NOP
-        instr_mem[11] = 8'b00000000;  // NOP
-        instr_mem[12] = 8'b00000000;  // NOP
-        instr_mem[13] = 8'b00000000;  // NOP
-        instr_mem[14] = 8'b00000000;  // NOP
-        instr_mem[15] = 8'b00000000;  // NOP
-        
-        // Initialize data memory
-        data_mem[0] = 4'h0;  // Counter value
-        data_mem[1] = 4'h1;  // Constant 1
-        data_mem[2] = 4'h0;
-        data_mem[3] = 4'h0;
-        data_mem[4] = 4'h0;
-        data_mem[5] = 4'h0;
-        data_mem[6] = 4'h0;
-        data_mem[7] = 4'h0;
-        data_mem[8] = 4'h0;
-        data_mem[9] = 4'h0;
-        data_mem[10] = 4'h0;
-        data_mem[11] = 4'h0;
-        data_mem[12] = 4'h0;
-        data_mem[13] = 4'h0;
-        data_mem[14] = 4'h0;
-        data_mem[15] = 4'h0;
-    end
-    
     // Main CPU logic
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -113,8 +117,8 @@ module tt_um_tiny4_cpu (
         end else if (ena) begin
             case (state)
                 FETCH: begin
-                    // Fetch instruction from instruction memory
-                    ir <= instr_mem[pc];
+                    // Fetch instruction from ROM (combinational)
+                    ir <= instr_rom;
                     state <= EXECUTE;
                 end
                 
