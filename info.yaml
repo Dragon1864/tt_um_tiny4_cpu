@@ -1,9 +1,9 @@
 # Tiny Tapeout project information
 project:
-  title:        "4-bit Tiny CPU"
+  title:        "Tiny4 CPU with Serial Loader"
   author:       "Garv R Jain"
   discord:      ""
-  description:  "A 4-bit accumulator-based CPU with ALU operations and branching support"
+  description:  "A compact 4-bit accumulator-based CPU with ALU operations, branching, and a serial instruction loader interface. Designed for minimal area (170 cells)."
   language:     "Verilog"
   clock_hz:     100000000
 
@@ -15,15 +15,15 @@ project:
     - "project.v"
 
 pinout:
-  # Inputs
-  ui[0]: "Instruction bit 0"
-  ui[1]: "Instruction bit 1"
-  ui[2]: "Instruction bit 2"
-  ui[3]: "Instruction bit 3"
-  ui[4]: "Instruction bit 4"
-  ui[5]: "Instruction bit 5"
-  ui[6]: "Instruction bit 6"
-  ui[7]: "Instruction bit 7"
+  # Inputs (match your ui_in usage)
+  ui[0]: "LOAD_MODE (1 = program load, 0 = execute)"
+  ui[1]: "LOAD_CLK (shift clock for instruction loading)"
+  ui[2]: "DATA_IN (serial instruction input)"
+  ui[3]: "Unused"
+  ui[4]: "Unused"
+  ui[5]: "Unused"
+  ui[6]: "Unused"
+  ui[7]: "Unused"
 
   # Outputs
   uo[0]: "ACC[0]"
@@ -35,13 +35,13 @@ pinout:
   uo[6]: "0"
   uo[7]: "0"
 
-  # Bidirectional
+  # Bidirectional (used as outputs)
   uio[0]: "PC[0]"
   uio[1]: "PC[1]"
   uio[2]: "PC[2]"
-  uio[3]: "PC[3]"
-  uio[4]: "Zero Flag"
-  uio[5]: "Carry Flag"
+  uio[3]: "Zero Flag"
+  uio[4]: "Carry Flag"
+  uio[5]: "Unused"
   uio[6]: "Unused"
   uio[7]: "Unused"
 
