@@ -65,7 +65,7 @@ module tiny4_cpu (
     reg [7:0] ir;
     reg [1:0] state;
 
-    // REGISTERED MEMORY READ (CRITICAL FIX)
+    // ✅ REGISTERED MEMORY READ (FIXED WITH RESET)
     reg [3:0] mem_data;
 
     // ================= FSM STATES =================
@@ -87,7 +87,7 @@ module tiny4_cpu (
     localparam JC  = 3'b111;
 
     // ============================================================
-    // INSTRUCTION MEMORY + LOADER (SINGLE BLOCK)
+    // INSTRUCTION MEMORY + LOADER
     // ============================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -95,10 +95,10 @@ module tiny4_cpu (
             instr_mem[1] <= 8'b01100001;
             instr_mem[2] <= 8'b01000000;
             instr_mem[3] <= 8'b10100000;
-            instr_mem[4] <= 8'b00000000;
-            instr_mem[5] <= 8'b00000000;
-            instr_mem[6] <= 8'b00000000;
-            instr_mem[7] <= 8'b00000000;
+            instr_mem[4] <= 0;
+            instr_mem[5] <= 0;
+            instr_mem[6] <= 0;
+            instr_mem[7] <= 0;
 
             load_shift_reg <= 0;
             load_bit_count <= 0;
@@ -127,7 +127,7 @@ module tiny4_cpu (
     end
 
     // ============================================================
-    // DATA MEMORY (SINGLE WRITER)
+    // DATA MEMORY (SINGLE DRIVER)
     // ============================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -147,20 +147,21 @@ module tiny4_cpu (
             data_mem[13] <= 4'h0;
             data_mem[14] <= 4'h0;
             data_mem[15] <= 4'h0;
-        end else begin
-            if (ena && !load_mode) begin
-                if (state == EXEC && opcode == STA) begin
-                    data_mem[operand] <= acc;
-                end
+        end else if (ena && !load_mode) begin
+            if (state == EXEC && opcode == STA) begin
+                data_mem[operand] <= acc;
             end
         end
     end
 
     // ============================================================
-    // REGISTERED MEMORY READ (CRITICAL)
+    // ✅ FIXED MEMORY READ (NO X PROPAGATION)
     // ============================================================
-    always @(posedge clk) begin
-        mem_data <= data_mem[operand];
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n)
+            mem_data <= 0;
+        else
+            mem_data <= data_mem[operand];
     end
 
     // ============================================================
@@ -204,9 +205,7 @@ module tiny4_cpu (
                             pc <= pc + 1;
                         end
 
-                        STA: begin
-                            pc <= pc + 1;
-                        end
+                        STA: pc <= pc + 1;
 
                         ADD: begin
                             acc <= alu_out;
@@ -244,9 +243,9 @@ module tiny4_cpu (
     end
 
     // ============================================================
-    // OUTPUTS
+    // OUTPUTS (NO X VALUES)
     // ============================================================
-    assign uo_out  = {4'b0, acc};
+    assign uo_out  = rst_n ? {4'b0, acc} : 8'b0;
     assign uio_out = {3'b0, flag_c, flag_z, pc};
     assign uio_oe  = 8'hFF;
 
