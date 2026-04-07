@@ -14,7 +14,7 @@ module tt_um_tiny4_cpu (
     input  wire       rst_n
 );
 
-    tiny4_cpu_loadable_optimized cpu (
+    tiny4_cpu cpu (
         .clk(clk),
         .rst_n(rst_n),
         .ui_in(ui_in),
@@ -31,7 +31,7 @@ endmodule
 // ============================================================
 // CPU CORE
 // ============================================================
-module tiny4_cpu_loadable_optimized (
+module tiny4_cpu (
     input  wire       clk,
     input  wire       rst_n,
     input  wire [7:0] ui_in,
@@ -42,25 +42,55 @@ module tiny4_cpu_loadable_optimized (
     input  wire       ena
 );
 
-    // INPUTS
+    // ================= INPUT DECODE =================
     wire load_mode = ui_in[0];
     wire load_clk  = ui_in[1];
     wire data_in   = ui_in[2];
 
-    // MEMORIES
+    // ================= MEMORIES =================
     reg [7:0] instr_mem [0:7];
     reg [3:0] data_mem  [0:15];
 
-    // LOADER REGISTERS
+    // ================= LOADER =================
     reg [7:0] load_shift_reg;
     reg [2:0] load_bit_count;
     reg [2:0] load_addr;
     reg       load_clk_prev;
 
-    // ================= INSTR MEM + LOADER (SINGLE BLOCK) =================
+    // ================= CPU REGISTERS =================
+    reg [3:0] acc;
+    reg [2:0] pc;
+    reg       flag_z;
+    reg       flag_c;
+    reg [7:0] ir;
+    reg [1:0] state;
+
+    // REGISTERED MEMORY READ (CRITICAL FIX)
+    reg [3:0] mem_data;
+
+    // ================= FSM STATES =================
+    localparam FETCH = 2'b00;
+    localparam EXEC  = 2'b01;
+    localparam WB    = 2'b10;
+
+    // ================= OPCODES =================
+    wire [2:0] opcode  = ir[7:5];
+    wire [3:0] operand = ir[3:0];
+
+    localparam NOP = 3'b000;
+    localparam LDA = 3'b001;
+    localparam STA = 3'b010;
+    localparam ADD = 3'b011;
+    localparam SUB = 3'b100;
+    localparam JMP = 3'b101;
+    localparam JZ  = 3'b110;
+    localparam JC  = 3'b111;
+
+    // ============================================================
+    // INSTRUCTION MEMORY + LOADER (SINGLE BLOCK)
+    // ============================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            // Instruction memory init
             instr_mem[0] <= 8'b00100000;
             instr_mem[1] <= 8'b01100001;
             instr_mem[2] <= 8'b01000000;
@@ -76,7 +106,6 @@ module tiny4_cpu_loadable_optimized (
             load_clk_prev <= 0;
 
         end else begin
-
             load_clk_prev <= load_clk;
 
             if (load_mode) begin
@@ -97,7 +126,9 @@ module tiny4_cpu_loadable_optimized (
         end
     end
 
-    // ================= DATA MEMORY RESET =================
+    // ============================================================
+    // DATA MEMORY (SINGLE WRITER)
+    // ============================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             data_mem[0]  <= 4'h0;
@@ -116,42 +147,36 @@ module tiny4_cpu_loadable_optimized (
             data_mem[13] <= 4'h0;
             data_mem[14] <= 4'h0;
             data_mem[15] <= 4'h0;
+        end else begin
+            if (ena && !load_mode) begin
+                if (state == EXEC && opcode == STA) begin
+                    data_mem[operand] <= acc;
+                end
+            end
         end
     end
 
-    // ================= CPU REGISTERS =================
-    reg [3:0] acc;
-    reg [2:0] pc;
-    reg       flag_z;
-    reg       flag_c;
-    reg [7:0] ir;
-    reg [1:0] state;
+    // ============================================================
+    // REGISTERED MEMORY READ (CRITICAL)
+    // ============================================================
+    always @(posedge clk) begin
+        mem_data <= data_mem[operand];
+    end
 
-    localparam FETCH = 2'b00;
-    localparam EXEC  = 2'b01;
-    localparam WB    = 2'b10;
-
-    wire [2:0] opcode  = ir[7:5];
-    wire [3:0] operand = ir[3:0];
-
-    localparam NOP = 3'b000;
-    localparam LDA = 3'b001;
-    localparam STA = 3'b010;
-    localparam ADD = 3'b011;
-    localparam SUB = 3'b100;
-    localparam JMP = 3'b101;
-    localparam JZ  = 3'b110;
-    localparam JC  = 3'b111;
-
+    // ============================================================
+    // ALU
+    // ============================================================
     wire [4:0] alu_result =
-        (opcode == ADD) ? (acc + data_mem[operand]) :
-        (opcode == SUB) ? (acc - data_mem[operand]) :
+        (opcode == ADD) ? (acc + mem_data) :
+        (opcode == SUB) ? (acc - mem_data) :
         5'b0;
 
     wire [3:0] alu_out = alu_result[3:0];
     wire       alu_carry = alu_result[4];
 
-    // ================= CPU FSM =================
+    // ============================================================
+    // CPU FSM
+    // ============================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             acc <= 0;
@@ -160,16 +185,8 @@ module tiny4_cpu_loadable_optimized (
             flag_c <= 0;
             ir <= 0;
             state <= FETCH;
+
         end else if (ena && !load_mode) begin
-
-            // DEFAULTS
-            acc <= acc;
-            pc <= pc;
-            flag_z <= flag_z;
-            flag_c <= flag_c;
-            ir <= ir;
-            state <= state;
-
             case (state)
 
                 FETCH: begin
@@ -183,12 +200,11 @@ module tiny4_cpu_loadable_optimized (
                         NOP: pc <= pc + 1;
 
                         LDA: begin
-                            acc <= data_mem[operand];
+                            acc <= mem_data;
                             pc <= pc + 1;
                         end
 
                         STA: begin
-                            data_mem[operand] <= acc;
                             pc <= pc + 1;
                         end
 
@@ -227,7 +243,9 @@ module tiny4_cpu_loadable_optimized (
         end
     end
 
+    // ============================================================
     // OUTPUTS
+    // ============================================================
     assign uo_out  = {4'b0, acc};
     assign uio_out = {3'b0, flag_c, flag_z, pc};
     assign uio_oe  = 8'hFF;
