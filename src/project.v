@@ -3,7 +3,7 @@
 // Reduced to 8 instructions to save gates
 // Harvard Architecture with 8-bit instructions
 
-module tiny4_cpu_loadable_optimized (
+module tt_um_tiny4_cpu (
     input  wire       clk,
     input  wire       rst_n,
     input  wire [7:0] ui_in,      // Input pins for loading and control
