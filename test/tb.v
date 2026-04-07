@@ -10,7 +10,7 @@ module tb;
     wire [7:0] uio_oe;
     reg  [7:0] uio_in;
 
-    tiny4_cpu_loadable_optimized dut (
+    tt_um_tiny4_cpu dut (
         .clk(clk),
         .rst_n(rst_n),
         .ui_in(ui_in),
