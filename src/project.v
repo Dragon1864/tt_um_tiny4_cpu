@@ -42,7 +42,7 @@ module tiny4_cpu_loadable_optimized (
     input  wire       ena
 );
 
-    // INPUT DECODE
+    // INPUTS
     wire load_mode = ui_in[0];
     wire load_clk  = ui_in[1];
     wire data_in   = ui_in[2];
@@ -51,20 +51,55 @@ module tiny4_cpu_loadable_optimized (
     reg [7:0] instr_mem [0:7];
     reg [3:0] data_mem  [0:15];
 
-    integer i;
+    // LOADER REGISTERS
+    reg [7:0] load_shift_reg;
+    reg [2:0] load_bit_count;
+    reg [2:0] load_addr;
+    reg       load_clk_prev;
 
-    // ================= RESET INITIALIZATION =================
+    // ================= INSTR MEM + LOADER (SINGLE BLOCK) =================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            // Instruction memory
+            // Instruction memory init
             instr_mem[0] <= 8'b00100000;
             instr_mem[1] <= 8'b01100001;
             instr_mem[2] <= 8'b01000000;
             instr_mem[3] <= 8'b10100000;
-            for (i = 4; i < 8; i = i + 1)
-                instr_mem[i] <= 8'b00000000;
+            instr_mem[4] <= 8'b00000000;
+            instr_mem[5] <= 8'b00000000;
+            instr_mem[6] <= 8'b00000000;
+            instr_mem[7] <= 8'b00000000;
 
-            // Data memory
+            load_shift_reg <= 0;
+            load_bit_count <= 0;
+            load_addr <= 0;
+            load_clk_prev <= 0;
+
+        end else begin
+
+            load_clk_prev <= load_clk;
+
+            if (load_mode) begin
+                if (load_clk && !load_clk_prev) begin
+                    load_shift_reg <= {load_shift_reg[6:0], data_in};
+                    load_bit_count <= load_bit_count + 1;
+
+                    if (load_bit_count == 3'd7) begin
+                        instr_mem[load_addr] <= {load_shift_reg[6:0], data_in};
+                        load_addr <= load_addr + 1;
+                        load_bit_count <= 0;
+                    end
+                end
+            end else begin
+                load_bit_count <= 0;
+                load_addr <= 0;
+            end
+        end
+    end
+
+    // ================= DATA MEMORY RESET =================
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
             data_mem[0]  <= 4'h0;
             data_mem[1]  <= 4'h1;
             data_mem[2]  <= 4'h0;
@@ -84,44 +119,12 @@ module tiny4_cpu_loadable_optimized (
         end
     end
 
-    // ================= LOADER =================
-    reg [7:0] load_shift_reg;
-    reg [2:0] load_bit_count;
-    reg [2:0] load_addr;
-    reg       load_clk_prev;
-
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            load_shift_reg <= 0;
-            load_bit_count <= 0;
-            load_addr <= 0;
-            load_clk_prev <= 0;
-        end else if (load_mode) begin
-            load_clk_prev <= load_clk;
-
-            if (load_clk && !load_clk_prev) begin
-                load_shift_reg <= {load_shift_reg[6:0], data_in};
-                load_bit_count <= load_bit_count + 1;
-
-                if (load_bit_count == 3'd7) begin
-                    instr_mem[load_addr] <= {load_shift_reg[6:0], data_in};
-                    load_addr <= load_addr + 1;
-                    load_bit_count <= 0;
-                end
-            end
-        end else begin
-            load_bit_count <= 0;
-            load_addr <= 0;
-        end
-    end
-
-    // ================= CPU =================
+    // ================= CPU REGISTERS =================
     reg [3:0] acc;
     reg [2:0] pc;
     reg       flag_z;
     reg       flag_c;
     reg [7:0] ir;
-
     reg [1:0] state;
 
     localparam FETCH = 2'b00;
@@ -148,7 +151,7 @@ module tiny4_cpu_loadable_optimized (
     wire [3:0] alu_out = alu_result[3:0];
     wire       alu_carry = alu_result[4];
 
-    // ================= FSM =================
+    // ================= CPU FSM =================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             acc <= 0;
@@ -159,7 +162,7 @@ module tiny4_cpu_loadable_optimized (
             state <= FETCH;
         end else if (ena && !load_mode) begin
 
-            // DEFAULTS (avoid latches)
+            // DEFAULTS
             acc <= acc;
             pc <= pc;
             flag_z <= flag_z;
@@ -205,9 +208,9 @@ module tiny4_cpu_loadable_optimized (
 
                         JMP: pc <= operand[2:0];
 
-                        JZ:  pc <= (flag_z) ? operand[2:0] : pc + 1;
+                        JZ: pc <= flag_z ? operand[2:0] : pc + 1;
 
-                        JC:  pc <= (flag_c) ? operand[2:0] : pc + 1;
+                        JC: pc <= flag_c ? operand[2:0] : pc + 1;
 
                         default: pc <= pc + 1;
 
@@ -216,9 +219,7 @@ module tiny4_cpu_loadable_optimized (
                     state <= WB;
                 end
 
-                WB: begin
-                    state <= FETCH;
-                end
+                WB: state <= FETCH;
 
                 default: state <= FETCH;
 
@@ -226,7 +227,7 @@ module tiny4_cpu_loadable_optimized (
         end
     end
 
-    // ================= OUTPUT =================
+    // OUTPUTS
     assign uo_out  = {4'b0, acc};
     assign uio_out = {3'b0, flag_c, flag_z, pc};
     assign uio_oe  = 8'hFF;
