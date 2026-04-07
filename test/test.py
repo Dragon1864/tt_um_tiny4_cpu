@@ -8,10 +8,16 @@ from cocotb.triggers import ClockCycles
 # ================================
 async def load_byte(dut, data):
     for i in range(7, -1, -1):
-        dut.ui_in[2].value = (data >> i) & 1  # DATA_IN
-        dut.ui_in[1].value = 1               # LOAD_CLK rising edge
+        bit = (data >> i) & 1
+
+        # LOAD_MODE=1, LOAD_CLK=1, DATA_IN=bit
+        val = (1 << 0) | (1 << 1) | (bit << 2)
+        dut.ui_in.value = val
         await ClockCycles(dut.clk, 1)
-        dut.ui_in[1].value = 0
+
+        # LOAD_CLK = 0 (keep LOAD_MODE = 1)
+        val = (1 << 0) | (bit << 2)
+        dut.ui_in.value = val
         await ClockCycles(dut.clk, 1)
 
 
@@ -19,7 +25,9 @@ async def load_byte(dut, data):
 async def test_project(dut):
     dut._log.info("Start Test")
 
-    # Start clock (10us period)
+    # ================================
+    # Clock
+    # ================================
     clock = Clock(dut.clk, 10, unit="us")
     cocotb.start_soon(clock.start())
 
@@ -36,38 +44,52 @@ async def test_project(dut):
     dut.rst_n.value = 1
 
     # ================================
-    # Enter LOAD MODE
+    # ENTER LOAD MODE
     # ================================
     dut._log.info("Entering Load Mode")
-    dut.ui_in[0].value = 1  # LOAD_MODE = 1
 
+    # LOAD_MODE = 1
+    dut.ui_in.value = 0b00000001
+    await ClockCycles(dut.clk, 2)
+
+    # ================================
+    # Load Program
+    # ================================
     # Program:
     # LDA 1
     # ADD 1
     # STA 2
-    # JMP 1
+    # JMP 1 (loop on ADD)
     await load_byte(dut, 0b00100001)  # LDA [1]
     await load_byte(dut, 0b01100001)  # ADD [1]
     await load_byte(dut, 0b01000010)  # STA [2]
     await load_byte(dut, 0b10100001)  # JMP 1
 
-    # Exit load mode
-    dut.ui_in[0].value = 0
+    # ================================
+    # EXIT LOAD MODE
+    # ================================
+    dut._log.info("Exiting Load Mode")
 
-    dut._log.info("Program Loaded. Running CPU...")
+    dut.ui_in.value = 0  # LOAD_MODE = 0
+    await ClockCycles(dut.clk, 5)
 
     # ================================
     # Run CPU
     # ================================
+    dut._log.info("Running CPU")
+
     await ClockCycles(dut.clk, 50)
 
     # ================================
-    # Check ACC behavior
+    # Check Results
     # ================================
     acc = dut.uo_out.value.integer & 0xF
-    dut._log.info(f"Final ACC = {acc}")
+    pc  = dut.uio_out.value.integer & 0x7
 
-    # Expect ACC > 1 (should be incrementing)
+    dut._log.info(f"Final ACC = {acc}")
+    dut._log.info(f"Final PC  = {pc}")
+
+    # Basic functional check
     assert acc > 1, f"ACC did not increment properly, got {acc}"
 
     dut._log.info("Test Passed ✅")
