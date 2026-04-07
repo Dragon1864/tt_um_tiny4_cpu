@@ -1,7 +1,7 @@
 `timescale 1ns / 1ps
 
 // ============================================================
-// TOP WRAPPER (REQUIRED FOR TINY TAPEOUT)
+// TOP WRAPPER
 // ============================================================
 module tt_um_tiny4_cpu (
     input  wire [7:0] ui_in,
@@ -42,34 +42,46 @@ module tiny4_cpu_loadable_optimized (
     input  wire       ena
 );
 
-    // ================= INPUT DECODE =================
+    // INPUT DECODE
     wire load_mode = ui_in[0];
     wire load_clk  = ui_in[1];
     wire data_in   = ui_in[2];
 
-    // ================= MEMORY =================
+    // MEMORIES
     reg [7:0] instr_mem [0:7];
     reg [3:0] data_mem  [0:15];
 
     integer i;
 
-    // Init
+    // ================= RESET INITIALIZATION =================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
+            // Instruction memory
             instr_mem[0] <= 8'b00100000;
             instr_mem[1] <= 8'b01100001;
             instr_mem[2] <= 8'b01000000;
             instr_mem[3] <= 8'b10100000;
             for (i = 4; i < 8; i = i + 1)
                 instr_mem[i] <= 8'b00000000;
-        end
-    end
 
-    initial begin
-        data_mem[0] = 4'h0;
-        data_mem[1] = 4'h1;
-        for (i = 2; i < 16; i = i + 1)
-            data_mem[i] = 4'h0;
+            // Data memory
+            data_mem[0]  <= 4'h0;
+            data_mem[1]  <= 4'h1;
+            data_mem[2]  <= 4'h0;
+            data_mem[3]  <= 4'h0;
+            data_mem[4]  <= 4'h0;
+            data_mem[5]  <= 4'h0;
+            data_mem[6]  <= 4'h0;
+            data_mem[7]  <= 4'h0;
+            data_mem[8]  <= 4'h0;
+            data_mem[9]  <= 4'h0;
+            data_mem[10] <= 4'h0;
+            data_mem[11] <= 4'h0;
+            data_mem[12] <= 4'h0;
+            data_mem[13] <= 4'h0;
+            data_mem[14] <= 4'h0;
+            data_mem[15] <= 4'h0;
+        end
     end
 
     // ================= LOADER =================
@@ -136,7 +148,7 @@ module tiny4_cpu_loadable_optimized (
     wire [3:0] alu_out = alu_result[3:0];
     wire       alu_carry = alu_result[4];
 
-    // ================= MAIN FSM =================
+    // ================= FSM =================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             acc <= 0;
@@ -147,7 +159,7 @@ module tiny4_cpu_loadable_optimized (
             state <= FETCH;
         end else if (ena && !load_mode) begin
 
-            // ✅ DEFAULTS (prevents latches)
+            // DEFAULTS (avoid latches)
             acc <= acc;
             pc <= pc;
             flag_z <= flag_z;
