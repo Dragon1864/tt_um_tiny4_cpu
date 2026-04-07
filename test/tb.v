@@ -1,78 +1,93 @@
-`default_nettype none
-`timescale 1ns / 1ps
+`timescale 1ns/1ps
 
-module tb ();
+module tb_tiny4_cpu;
 
-  // Dump waveform
-  initial begin
-    $dumpfile("tb.fst");
-    $dumpvars(0, tb);
-  end
+    reg clk;
+    reg rst_n;
+    reg ena;
 
-  // Signals
-  reg clk;
-  reg rst_n;
-  reg ena;
-  reg [7:0] ui_in;
-  reg [7:0] uio_in;
-  wire [7:0] uo_out;
-  wire [7:0] uio_out;
-  wire [7:0] uio_oe;
+    reg [7:0] ui_in;
+    wire [7:0] uo_out;
+    wire [7:0] uio_out;
+    wire [7:0] uio_oe;
+    reg  [7:0] uio_in;
 
-`ifdef GL_TEST
-  wire VPWR = 1'b1;
-  wire VGND = 1'b0;
-`endif
-
-  // Instantiate YOUR CPU
-  tt_um_tiny4_cpu dut (
-`ifdef GL_TEST
-      .VPWR(VPWR),
-      .VGND(VGND),
-`endif
-      .ui_in(ui_in),
-      .uo_out(uo_out),
-      .uio_in(uio_in),
-      .uio_out(uio_out),
-      .uio_oe(uio_oe),
-      .ena(ena),
-      .clk(clk),
-      .rst_n(rst_n)
-  );
-
-  // Clock generation (10ns period)
-  always #5 clk = ~clk;
-
-  // Monitor signals (VERY useful)
-  initial begin
-    $display("Time\tPC\tACC\tZ\tC");
-    $monitor("%0t\t%0d\t%0d\t%b\t%b",
-        $time,
-        uio_out[3:0],   // PC
-        uo_out[3:0],    // ACC
-        uio_out[4],     // Z
-        uio_out[5]      // C
+    // Instantiate DUT
+    tiny4_cpu_loadable_optimized dut (
+        .clk(clk),
+        .rst_n(rst_n),
+        .ui_in(ui_in),
+        .uo_out(uo_out),
+        .uio_out(uio_out),
+        .uio_oe(uio_oe),
+        .uio_in(uio_in),
+        .ena(ena)
     );
-  end
 
-  // Test sequence
-  initial begin
-    // Init
-    clk = 0;
-    rst_n = 0;
-    ena = 1;
-    ui_in = 0;     // NOT USED in your design
-    uio_in = 0;    // NOT USED
+    // Clock generation (10ns period)
+    always #5 clk = ~clk;
 
-    // Apply reset
-    #20;
-    rst_n = 1;
+    // Task to shift one byte serially into instruction memory
+    task load_byte(input [7:0] data);
+        integer i;
+        begin
+            for (i = 7; i >= 0; i = i - 1) begin
+                ui_in[2] = data[i];   // DATA_IN
+                ui_in[1] = 1;         // LOAD_CLK rising edge
+                #10;
+                ui_in[1] = 0;
+                #10;
+            end
+        end
+    endtask
 
-    // Run CPU for some cycles
-    #500;
+    initial begin
+        // Initialize
+        clk = 0;
+        rst_n = 0;
+        ena = 0;
+        ui_in = 0;
+        uio_in = 0;
 
-    // Finish
-    $finish;
-  end
+        // Reset
+        #20;
+        rst_n = 1;
+
+        // ============================
+        // ENTER LOAD MODE
+        // ============================
+        ui_in[0] = 1; // LOAD_MODE = 1
+
+        // Load program:
+        // LDA 1 → ADD 1 → STA 2 → JMP 0
+        load_byte(8'b00100001); // LDA [1]
+        load_byte(8'b01100001); // ADD [1]
+        load_byte(8'b01000010); // STA [2]
+        load_byte(8'b10100000); // JMP 0
+
+        // ============================
+        // EXIT LOAD MODE
+        // ============================
+        ui_in[0] = 0;
+
+        ena = 1;
+
+        // Run simulation
+        #200;
+
+        $finish;
+    end
+
+    // ============================
+    // MONITOR SIGNALS
+    // ============================
+    initial begin
+        $monitor("Time=%0t | ACC=%h | PC=%h | Z=%b | C=%b",
+                 $time,
+                 uo_out[3:0],
+                 uio_out[2:0],
+                 uio_out[3],
+                 uio_out[4]);
+    end
 
 endmodule
