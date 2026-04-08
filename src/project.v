@@ -33,7 +33,7 @@ module tt_um_tiny4_cpu (
     reg [7:0] ir;
     reg [1:0] state;
 
-    reg [3:0] mem_data;   // registered memory read
+    reg [3:0] mem_data;
     reg [3:0] alu_out;
     reg       alu_carry;
 
@@ -57,14 +57,23 @@ module tt_um_tiny4_cpu (
     localparam JC  = 3'b111;
 
     // ============================================================
-    // INIT PROGRAM
+    // RESET INITIALIZATION (CRITICAL FIX)
     // ============================================================
-    reg init_done;
-    
     always @(posedge clk or negedge rst_n) begin
-        if (!rst_n)
-            init_done <= 0;
-        else if (!init_done && !load_mode) begin
+        if (!rst_n) begin
+            // CPU
+            acc <= 0;
+            pc <= 0;
+            flag_z <= 0;
+            flag_c <= 0;
+            ir <= 0;
+            state <= FETCH;
+
+            mem_data <= 0;
+            alu_out <= 0;
+            alu_carry <= 0;
+
+            // Instruction memory
             instr_mem[0] <= 8'b00100000;
             instr_mem[1] <= 8'b01100001;
             instr_mem[2] <= 8'b01000000;
@@ -73,45 +82,8 @@ module tt_um_tiny4_cpu (
             instr_mem[5] <= 0;
             instr_mem[6] <= 0;
             instr_mem[7] <= 0;
-            init_done <= 1;
-        end
-    end
 
-    // ============================================================
-    // SERIAL LOADER
-    // ============================================================
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            shift_reg <= 0;
-            bit_count <= 0;
-            load_addr <= 0;
-            load_clk_prev <= 0;
-        end else begin
-            load_clk_prev <= load_clk;
-
-            if (load_mode && init_done) begin
-                if (load_clk && !load_clk_prev) begin
-                    shift_reg <= {shift_reg[6:0], data_in};
-                    bit_count <= bit_count + 1;
-
-                    if (bit_count == 3'd7) begin
-                        instr_mem[load_addr] <= {shift_reg[6:0], data_in};
-                        load_addr <= load_addr + 1;
-                        bit_count <= 0;
-                    end
-                end
-            end else begin
-                bit_count <= 0;
-                load_addr <= 0;
-            end
-        end
-    end
-
-    // ============================================================
-    // DATA MEMORY
-    // ============================================================
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
+            // Data memory
             data_mem[0]  <= 0;
             data_mem[1]  <= 1;
             data_mem[2]  <= 0;
@@ -128,81 +100,90 @@ module tt_um_tiny4_cpu (
             data_mem[13] <= 0;
             data_mem[14] <= 0;
             data_mem[15] <= 0;
-        end else if (ena && !load_mode && state == WB && opcode == STA) begin
-            data_mem[operand] <= acc;
+
+            // Loader
+            shift_reg <= 0;
+            bit_count <= 0;
+            load_addr <= 0;
+            load_clk_prev <= 0;
+        end else begin
+
+            // ================= SERIAL LOADER =================
+            load_clk_prev <= load_clk;
+
+            if (load_mode) begin
+                if (load_clk && !load_clk_prev) begin
+                    shift_reg <= {shift_reg[6:0], data_in};
+                    bit_count <= bit_count + 1;
+
+                    if (bit_count == 3'd7) begin
+                        instr_mem[load_addr] <= {shift_reg[6:0], data_in};
+                        load_addr <= load_addr + 1;
+                        bit_count <= 0;
+                    end
+                end
+            end else begin
+                bit_count <= 0;
+                load_addr <= 0;
+            end
+
+            // ================= CPU =================
+            if (ena && !load_mode) begin
+                case (state)
+
+                    FETCH: begin
+                        ir <= instr_mem[pc];
+                        state <= EXEC;
+                    end
+
+                    EXEC: begin
+                        mem_data <= data_mem[operand];  // SAFE
+
+                        case (opcode)
+                            JMP: pc <= operand[2:0];
+                            JZ:  pc <= flag_z ? operand[2:0] : pc + 1;
+                            JC:  pc <= flag_c ? operand[2:0] : pc + 1;
+                            default: pc <= pc + 1;
+                        endcase
+
+                        state <= WB;
+                    end
+
+                    WB: begin
+                        case (opcode)
+
+                            LDA: acc <= mem_data;
+
+                            ADD: begin
+                                {alu_carry, alu_out} <= acc + mem_data;
+                                acc <= alu_out;
+                                flag_c <= alu_carry;
+                                flag_z <= (alu_out == 0);
+                            end
+
+                            SUB: begin
+                                {alu_carry, alu_out} <= acc - mem_data;
+                                acc <= alu_out;
+                                flag_c <= alu_carry;
+                                flag_z <= (alu_out == 0);
+                            end
+
+                            STA: data_mem[operand] <= acc;
+
+                        endcase
+
+                        state <= FETCH;
+                    end
+
+                endcase
+            end
         end
     end
 
     // ============================================================
-    // CPU FSM
+    // OUTPUTS (SAFE)
     // ============================================================
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            acc <= 0;
-            pc <= 0;
-            flag_z <= 0;
-            flag_c <= 0;
-            ir <= 0;
-            state <= FETCH;
-            mem_data <= 0;
-            alu_out <= 0;
-            alu_carry <= 0;
-
-        end else if (ena && !load_mode && init_done) begin
-            case (state)
-
-                // ================= FETCH =================
-                FETCH: begin
-                    ir <= instr_mem[pc];
-                    state <= EXEC;
-                end
-
-                // ================= EXEC =================
-                EXEC: begin
-                    mem_data <= data_mem[operand];   // SAFE: IR already stable
-
-                    case (opcode)
-                        JMP: pc <= operand[2:0];
-                        JZ:  pc <= flag_z ? operand[2:0] : pc + 1;
-                        JC:  pc <= flag_c ? operand[2:0] : pc + 1;
-                        default: pc <= pc + 1;
-                    endcase
-
-                    state <= WB;
-                end
-
-                // ================= WRITEBACK =================
-                WB: begin
-                    case (opcode)
-
-                        LDA: acc <= mem_data;
-
-                        ADD: begin
-                            {flag_c, alu_out} = acc + mem_data;
-                            acc <= alu_out;
-                            flag_z <= (alu_out == 0);
-                        end
-
-                        SUB: begin
-                            {flag_c, alu_out} = acc - mem_data;
-                            acc <= alu_out;
-                            flag_z <= (alu_out == 0);
-                        end
-
-                        default: ;
-                    endcase
-
-                    state <= FETCH;
-                end
-
-            endcase
-        end
-    end
-
-    // ============================================================
-    // SAFE OUTPUT
-    // ============================================================
-    assign uo_out  = (rst_n && init_done) ? {4'b0000, acc} : 8'b0;
+    assign uo_out  = rst_n ? {4'b0000, acc} : 8'b0;
     assign uio_out = {3'b000, flag_c, flag_z, pc};
     assign uio_oe  = 8'hFF;
 
