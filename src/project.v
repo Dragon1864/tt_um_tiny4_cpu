@@ -37,10 +37,11 @@ module tt_um_tiny4_cpu (
     reg [3:0] alu_out;
     reg       alu_carry;
 
-    // FSM states
-    localparam FETCH = 2'b00;
-    localparam EXEC  = 2'b01;
-    localparam WB    = 2'b10;
+    // FSM states (UPDATED)
+    localparam FETCH  = 2'b00;
+    localparam DECODE = 2'b01;
+    localparam EXEC   = 2'b10;
+    localparam WB     = 2'b11;
 
     // Decode
     wire [2:0] opcode  = ir[7:5];
@@ -57,7 +58,7 @@ module tt_um_tiny4_cpu (
     localparam JC  = 3'b111;
 
     // ============================================================
-    // RESET INITIALIZATION (CRITICAL FIX)
+    // RESET + INIT
     // ============================================================
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -68,7 +69,6 @@ module tt_um_tiny4_cpu (
             flag_c <= 0;
             ir <= 0;
             state <= FETCH;
-
             mem_data <= 0;
             alu_out <= 0;
             alu_carry <= 0;
@@ -129,59 +129,65 @@ module tt_um_tiny4_cpu (
 
             // ================= CPU =================
             if (ena && !load_mode) begin
-               case (state)
+                case (state)
 
-    FETCH: begin
-        ir <= instr_mem[pc];
-        state <= DECODE;
-    end
+                    // FETCH
+                    FETCH: begin
+                        ir <= instr_mem[pc];
+                        state <= DECODE;
+                    end
 
-    DECODE: begin
-        state <= EXEC;
-    end
+                    // NEW: DECODE (stabilization stage)
+                    DECODE: begin
+                        state <= EXEC;
+                    end
 
-    EXEC: begin
-        mem_data <= data_mem[operand];
+                    // EXEC
+                    EXEC: begin
+                        mem_data <= data_mem[operand];
 
-        case (opcode)
-            JMP: pc <= operand[2:0];
-            JZ:  pc <= flag_z ? operand[2:0] : pc + 1;
-            JC:  pc <= flag_c ? operand[2:0] : pc + 1;
-            default: pc <= pc + 1;
-        endcase
+                        case (opcode)
+                            JMP: pc <= operand[2:0];
+                            JZ:  pc <= flag_z ? operand[2:0] : pc + 1;
+                            JC:  pc <= flag_c ? operand[2:0] : pc + 1;
+                            default: pc <= pc + 1;
+                        endcase
 
-        state <= WB;
-    end
+                        state <= WB;
+                    end
 
-    WB: begin
-        case (opcode)
-            LDA: acc <= mem_data;
+                    // WRITEBACK
+                    WB: begin
+                        case (opcode)
 
-            ADD: begin
-                {flag_c, alu_out} <= acc + mem_data;
-                acc <= alu_out;
-                flag_z <= (alu_out == 0);
-            end
+                            LDA: acc <= mem_data;
 
-            SUB: begin
-                {flag_c, alu_out} <= acc - mem_data;
-                acc <= alu_out;
-                flag_z <= (alu_out == 0);
-            end
+                            ADD: begin
+                                {flag_c, alu_out} <= acc + mem_data;
+                                acc <= alu_out;
+                                flag_z <= (alu_out == 0);
+                            end
 
-            STA: data_mem[operand] <= acc;
-        endcase
+                            SUB: begin
+                                {flag_c, alu_out} <= acc - mem_data;
+                                acc <= alu_out;
+                                flag_z <= (alu_out == 0);
+                            end
 
-        state <= FETCH;
-    end
+                            STA: data_mem[operand] <= acc;
 
-endcase
+                        endcase
+
+                        state <= FETCH;
+                    end
+
+                endcase
             end
         end
     end
 
     // ============================================================
-    // OUTPUTS (SAFE)
+    // OUTPUTS
     // ============================================================
     assign uo_out  = rst_n ? {4'b0000, acc} : 8'b0;
     assign uio_out = {3'b000, flag_c, flag_z, pc};
