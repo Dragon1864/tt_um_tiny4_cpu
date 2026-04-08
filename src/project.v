@@ -129,53 +129,53 @@ module tt_um_tiny4_cpu (
 
             // ================= CPU =================
             if (ena && !load_mode) begin
-                case (state)
+               case (state)
 
-                    FETCH: begin
-                        ir <= instr_mem[pc];
-                        state <= EXEC;
-                    end
+    FETCH: begin
+        ir <= instr_mem[pc];
+        state <= DECODE;
+    end
 
-                    EXEC: begin
-                        mem_data <= data_mem[operand];  // SAFE
+    DECODE: begin
+        state <= EXEC;
+    end
 
-                        case (opcode)
-                            JMP: pc <= operand[2:0];
-                            JZ:  pc <= flag_z ? operand[2:0] : pc + 1;
-                            JC:  pc <= flag_c ? operand[2:0] : pc + 1;
-                            default: pc <= pc + 1;
-                        endcase
+    EXEC: begin
+        mem_data <= data_mem[operand];
 
-                        state <= WB;
-                    end
+        case (opcode)
+            JMP: pc <= operand[2:0];
+            JZ:  pc <= flag_z ? operand[2:0] : pc + 1;
+            JC:  pc <= flag_c ? operand[2:0] : pc + 1;
+            default: pc <= pc + 1;
+        endcase
 
-                    WB: begin
-                        case (opcode)
+        state <= WB;
+    end
 
-                            LDA: acc <= mem_data;
+    WB: begin
+        case (opcode)
+            LDA: acc <= mem_data;
 
-                            ADD: begin
-                                {alu_carry, alu_out} <= acc + mem_data;
-                                acc <= alu_out;
-                                flag_c <= alu_carry;
-                                flag_z <= (alu_out == 0);
-                            end
+            ADD: begin
+                {flag_c, alu_out} <= acc + mem_data;
+                acc <= alu_out;
+                flag_z <= (alu_out == 0);
+            end
 
-                            SUB: begin
-                                {alu_carry, alu_out} <= acc - mem_data;
-                                acc <= alu_out;
-                                flag_c <= alu_carry;
-                                flag_z <= (alu_out == 0);
-                            end
+            SUB: begin
+                {flag_c, alu_out} <= acc - mem_data;
+                acc <= alu_out;
+                flag_z <= (alu_out == 0);
+            end
 
-                            STA: data_mem[operand] <= acc;
+            STA: data_mem[operand] <= acc;
+        endcase
 
-                        endcase
+        state <= FETCH;
+    end
 
-                        state <= FETCH;
-                    end
-
-                endcase
+endcase
             end
         end
     end
