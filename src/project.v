@@ -33,9 +33,9 @@ module tt_um_tiny4_cpu (
     reg [7:0] ir;
     reg [1:0] state;
 
-    reg [3:0] mem_data;
-    reg       exec_valid;
-    reg       exec_valid_d;
+    reg [3:0] mem_data;   // registered memory read
+    reg [3:0] alu_out;
+    reg       alu_carry;
 
     // FSM states
     localparam FETCH = 2'b00;
@@ -62,9 +62,9 @@ module tt_um_tiny4_cpu (
     reg init_done;
     
     always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
+        if (!rst_n)
             init_done <= 0;
-        end else if (!init_done && !load_mode) begin
+        else if (!init_done && !load_mode) begin
             instr_mem[0] <= 8'b00100000;
             instr_mem[1] <= 8'b01100001;
             instr_mem[2] <= 8'b01000000;
@@ -100,7 +100,7 @@ module tt_um_tiny4_cpu (
                         bit_count <= 0;
                     end
                 end
-            end else if (!load_mode) begin
+            end else begin
                 bit_count <= 0;
                 load_addr <= 0;
             end
@@ -128,53 +128,8 @@ module tt_um_tiny4_cpu (
             data_mem[13] <= 0;
             data_mem[14] <= 0;
             data_mem[15] <= 0;
-        end else if (ena && !load_mode && exec_valid_d && opcode == STA) begin
+        end else if (ena && !load_mode && state == WB && opcode == STA) begin
             data_mem[operand] <= acc;
-        end
-    end
-
-    // ============================================================
-    // EXEC VALID PIPELINE (CRITICAL FIX)
-    // ============================================================
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            exec_valid <= 0;
-            exec_valid_d <= 0;
-        end else if (ena && !load_mode) begin
-            exec_valid   <= (state == EXEC);
-            exec_valid_d <= exec_valid;
-        end
-    end
-
-    // ============================================================
-    // SAFE MEMORY READ
-    // ============================================================
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n)
-            mem_data <= 0;
-        else if (ena && !load_mode && exec_valid_d)
-            mem_data <= data_mem[operand];
-    end
-
-    // ============================================================
-    // ALU
-    // ============================================================
-    reg [3:0] alu_out;
-    reg       alu_carry;
-    
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            alu_out <= 0;
-            alu_carry <= 0;
-        end else if (ena && !load_mode && exec_valid_d) begin
-            case (opcode)
-                ADD: {alu_carry, alu_out} <= acc + mem_data;
-                SUB: {alu_carry, alu_out} <= acc - mem_data;
-                default: begin
-                    alu_out <= 0;
-                    alu_carry <= 0;
-                end
-            endcase
         end
     end
 
@@ -189,43 +144,54 @@ module tt_um_tiny4_cpu (
             flag_c <= 0;
             ir <= 0;
             state <= FETCH;
+            mem_data <= 0;
+            alu_out <= 0;
+            alu_carry <= 0;
 
         end else if (ena && !load_mode && init_done) begin
             case (state)
 
+                // ================= FETCH =================
                 FETCH: begin
                     ir <= instr_mem[pc];
                     state <= EXEC;
                 end
 
+                // ================= EXEC =================
                 EXEC: begin
+                    mem_data <= data_mem[operand];   // SAFE: IR already stable
+
                     case (opcode)
                         JMP: pc <= operand[2:0];
                         JZ:  pc <= flag_z ? operand[2:0] : pc + 1;
                         JC:  pc <= flag_c ? operand[2:0] : pc + 1;
                         default: pc <= pc + 1;
                     endcase
+
                     state <= WB;
                 end
 
+                // ================= WRITEBACK =================
                 WB: begin
-                    if (exec_valid_d) begin
-                        case (opcode)
-                            LDA: acc <= mem_data;
+                    case (opcode)
 
-                            ADD: begin
-                                acc <= alu_out;
-                                flag_c <= alu_carry;
-                                flag_z <= (alu_out == 0);
-                            end
+                        LDA: acc <= mem_data;
 
-                            SUB: begin
-                                acc <= alu_out;
-                                flag_c <= alu_carry;
-                                flag_z <= (alu_out == 0);
-                            end
-                        endcase
-                    end
+                        ADD: begin
+                            {flag_c, alu_out} = acc + mem_data;
+                            acc <= alu_out;
+                            flag_z <= (alu_out == 0);
+                        end
+
+                        SUB: begin
+                            {flag_c, alu_out} = acc - mem_data;
+                            acc <= alu_out;
+                            flag_z <= (alu_out == 0);
+                        end
+
+                        default: ;
+                    endcase
+
                     state <= FETCH;
                 end
 
@@ -234,9 +200,9 @@ module tt_um_tiny4_cpu (
     end
 
     // ============================================================
-    // SAFE OUTPUTS
+    // SAFE OUTPUT
     // ============================================================
-    assign uo_out  = (rst_n && init_done && exec_valid_d) ? {4'b0000, acc} : 8'b0;
+    assign uo_out  = (rst_n && init_done) ? {4'b0000, acc} : 8'b0;
     assign uio_out = {3'b000, flag_c, flag_z, pc};
     assign uio_oe  = 8'hFF;
 
