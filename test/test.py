@@ -34,7 +34,7 @@ async def test_project(dut):
     dut.rst_n.value = 1
 
     await ClockCycles(dut.clk, 2)
-    await Timer(1, unit="ns")   # ⭐ important for GLS
+    await Timer(2, unit="ns")   # allow full settle
 
     # ================================
     # TEST SET 1: XOR / AND
@@ -46,30 +46,39 @@ async def test_project(dut):
 
     dut.uio_in.value = (lut1 << 4) | lut0
 
-    await ClockCycles(dut.clk, 2)
-    await Timer(1, unit="ns")
+    await ClockCycles(dut.clk, 3)
+    await Timer(2, unit="ns")
 
     for i in range(4):
 
-        val = (i << 2) | i
+        # Clean input assignment (no ambiguity)
+        a = (i & 1)
+        b = ((i >> 1) & 1)
+
+        val = (a << 0) | (b << 1) | (a << 2) | (b << 3)
         dut.ui_in.value = val
 
-        await ClockCycles(dut.clk, 1)
-        await Timer(1, unit="ns")   # ⭐ GLS settle time
+        # Wait for propagation
+        await ClockCycles(dut.clk, 2)
+        await Timer(2, unit="ns")
+
+        # Read twice (stability check)
+        out1 = dut.uo_out.value.to_unsigned()
+        await Timer(1, unit="ns")
+        out2 = dut.uo_out.value.to_unsigned()
+
+        assert out1 == out2, "Output not stable (GLS issue)"
+        out = out2
 
         # Extract inputs
-        a0 = (val >> 0) & 1
-        b0 = (val >> 1) & 1
-        a1 = (val >> 2) & 1
-        b1 = (val >> 3) & 1
+        a0, b0 = a, b
+        a1, b1 = a, b
 
         # Expected outputs
         p0 = lut_eval(lut0, a0, b0)
         p1 = lut_eval(lut1, a1, b1)
         p2 = lut_eval(lut0, p0, p1)
         p3 = lut_eval(lut1, p1, p2)
-
-        out = dut.uo_out.value.integer
 
         dut._log.info(
             f"Input={i:02b} | OUT={out:04b} | EXP={p3}{p2}{p1}{p0}"
@@ -90,28 +99,31 @@ async def test_project(dut):
 
     dut.uio_in.value = (lut1 << 4) | lut0
 
-    await ClockCycles(dut.clk, 2)
-    await Timer(1, unit="ns")
+    await ClockCycles(dut.clk, 3)
+    await Timer(2, unit="ns")
 
     for i in range(4):
 
-        val = (i << 2) | i
+        a = (i & 1)
+        b = ((i >> 1) & 1)
+
+        val = (a << 0) | (b << 1) | (a << 2) | (b << 3)
         dut.ui_in.value = val
 
-        await ClockCycles(dut.clk, 1)
+        await ClockCycles(dut.clk, 2)
+        await Timer(2, unit="ns")
+
+        out1 = dut.uo_out.value.to_unsigned()
         await Timer(1, unit="ns")
+        out2 = dut.uo_out.value.to_unsigned()
 
-        a0 = (val >> 0) & 1
-        b0 = (val >> 1) & 1
-        a1 = (val >> 2) & 1
-        b1 = (val >> 3) & 1
+        assert out1 == out2, "Output unstable"
+        out = out2
 
-        p0 = lut_eval(lut0, a0, b0)
-        p1 = lut_eval(lut1, a1, b1)
+        p0 = lut_eval(lut0, a, b)
+        p1 = lut_eval(lut1, a, b)
         p2 = lut_eval(lut0, p0, p1)
         p3 = lut_eval(lut1, p1, p2)
-
-        out = dut.uo_out.value.integer
 
         assert ((out >> 0) & 1) == p0
         assert ((out >> 1) & 1) == p1
@@ -121,25 +133,28 @@ async def test_project(dut):
     # ================================
     # TEST SET 3: EDGE CASES
     # ================================
-    dut._log.info("Test Set 3: EDGE")
+    dut._log.info("Test Set 3: EDGE CASES")
 
     lut0 = 0b0000  # always 0
     lut1 = 0b1111  # always 1
 
     dut.uio_in.value = (lut1 << 4) | lut0
 
-    await ClockCycles(dut.clk, 2)
-    await Timer(1, unit="ns")
+    await ClockCycles(dut.clk, 3)
+    await Timer(2, unit="ns")
 
     for i in range(4):
 
-        val = (i << 2) | i
+        a = (i & 1)
+        b = ((i >> 1) & 1)
+
+        val = (a << 0) | (b << 1) | (a << 2) | (b << 3)
         dut.ui_in.value = val
 
-        await ClockCycles(dut.clk, 1)
-        await Timer(1, unit="ns")
+        await ClockCycles(dut.clk, 2)
+        await Timer(2, unit="ns")
 
-        out = dut.uo_out.value.integer
+        out = dut.uo_out.value.to_unsigned()
 
         assert ((out >> 0) & 1) == 0, "PLC0 not zero"
         assert ((out >> 1) & 1) == 1, "PLC1 not one"
