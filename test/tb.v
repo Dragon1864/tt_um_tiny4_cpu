@@ -1,5 +1,3 @@
-`timescale 1ns/1ps
-
 module tb;
 
     reg clk;
@@ -22,26 +20,5 @@ module tb;
         .uio_in(uio_in),
         .ena(ena)
     );
-
-    initial clk = 0;
-    always #5 clk = ~clk;
-
-    initial begin
-        rst_n = 0;
-        ena   = 1;
-        ui_in = 0;
-        uio_in = 0;
-
-        #20;
-        rst_n = 1;
-
-        // simple stimulus
-        uio_in = 8'b10000110; // AND + XOR config
-        ui_in  = 8'b00001111;
-
-        #100;
-
-        $finish;
-    end
 
 endmodule
