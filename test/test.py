@@ -128,12 +128,17 @@ async def test_project(dut):
 
         await ClockCycles(dut.clk, 5)
         await Timer(5, unit="ns")
+out = dut.uo_out.value.to_unsigned()
 
-        out = dut.uo_out.value.to_unsigned()
+p0 = lut_eval(lut0, a, b)
+p1 = lut_eval(lut1, a, b)
 
-        assert ((out >> 0) & 1) == 0, "PLC0 should be 0"
-        assert ((out >> 1) & 1) == 1, "PLC1 should be 1"
+dut._log.info(
+    f"DEBUG → a={a}, b={b} | OUT={out:08b} | p0={p0}, p1={p1}"
+)
 
-    dut._log.info("=================================")
-    dut._log.info("ALL TESTS PASSED ✅ (GLS SAFE)")
-    dut._log.info("=================================")
+if ((out >> 0) & 1) != p0:
+    raise AssertionError(f"PLC0 mismatch: got {(out>>0)&1}, expected {p0}")
+
+if ((out >> 1) & 1) != p1:
+    raise AssertionError(f"PLC1 mismatch: got {(out>>1)&1}, expected {p1}")
