@@ -1,48 +1,48 @@
 # Tiny Tapeout project information
 project:
-  title:        "Tiny4 CPU with Serial Loader"
+  title:        "4-PLC Configurable Logic Fabric"
   author:       "Garv R Jain"
   discord:      ""
-  description:  "A compact 4-bit accumulator-based CPU with ALU operations, branching, and a serial instruction loader interface. Designed for minimal area (170 cells)."
+  description:  "A compact configurable logic fabric built using 4 programmable logic cells (PLCs). Each PLC implements a 2-input LUT, with chaining support to realize combinational logic functions."
   language:     "Verilog"
   clock_hz:     100000000
 
   tiles: "1x1"
 
-  top_module:  "tt_um_tiny4_cpu"
+  top_module:  "tt_um_4plc"
 
   source_files:
     - "project.v"
 
 pinout:
-  # Inputs (match your ui_in usage)
-  ui[0]: "LOAD_MODE (1 = program load, 0 = execute)"
-  ui[1]: "LOAD_CLK (shift clock for instruction loading)"
-  ui[2]: "DATA_IN (serial instruction input)"
-  ui[3]: "Unused"
+  # Inputs (ui_in)
+  ui[0]: "PLC0 input A"
+  ui[1]: "PLC0 input B"
+  ui[2]: "PLC1 input A"
+  ui[3]: "PLC1 input B"
   ui[4]: "Unused"
   ui[5]: "Unused"
   ui[6]: "Unused"
   ui[7]: "Unused"
 
-  # Outputs
-  uo[0]: "ACC[0]"
-  uo[1]: "ACC[1]"
-  uo[2]: "ACC[2]"
-  uo[3]: "ACC[3]"
+  # Outputs (uo_out)
+  uo[0]: "PLC0 output"
+  uo[1]: "PLC1 output"
+  uo[2]: "PLC2 output (chained)"
+  uo[3]: "PLC3 output (chained)"
   uo[4]: "0"
   uo[5]: "0"
   uo[6]: "0"
   uo[7]: "0"
 
-  # Bidirectional (used as outputs)
-  uio[0]: "PC[0]"
-  uio[1]: "PC[1]"
-  uio[2]: "PC[2]"
-  uio[3]: "Zero Flag"
-  uio[4]: "Carry Flag"
-  uio[5]: "Unused"
-  uio[6]: "Unused"
-  uio[7]: "Unused"
+  # Bidirectional (used as inputs for config)
+  uio[0]: "LUT0[0]"
+  uio[1]: "LUT0[1]"
+  uio[2]: "LUT0[2]"
+  uio[3]: "LUT0[3]"
+  uio[4]: "LUT1[0]"
+  uio[5]: "LUT1[1]"
+  uio[6]: "LUT1[2]"
+  uio[7]: "LUT1[3]"
 
 yaml_version: 6
