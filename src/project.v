@@ -1,6 +1,7 @@
-`timescale 1ns / 1ps
+`default_nettype none
 
-module tt_um_tiny4_cpu (
+module tt_um_4plc (
+
     input  wire [7:0] ui_in,
     output wire [7:0] uo_out,
     input  wire [7:0] uio_in,
@@ -11,186 +12,65 @@ module tt_um_tiny4_cpu (
     input  wire       rst_n
 );
 
-    // ================= INPUTS =================
-    wire load_mode = ui_in[0];
-    wire load_clk  = ui_in[1];
-    wire data_in   = ui_in[2];
+    assign uio_out = 8'h00;
+    assign uio_oe  = 8'h00;
 
-    // ================= MEMORIES =================
-    reg [7:0] instr_mem [0:7];
-    reg [3:0] data_mem  [0:15];
+    // -----------------------------
+    // LUT configs
+    // -----------------------------
+    wire [3:0] lut0 = uio_in[3:0];   // PLC0
+    wire [3:0] lut1 = uio_in[7:4];   // PLC1
 
-    // ================= LOADER =================
-    reg [7:0] shift_reg;
-    reg [2:0] bit_count;
-    reg [2:0] load_addr;
-    reg       load_clk_prev;
+    wire [3:0] lut2 = lut0;          // reuse
+    wire [3:0] lut3 = lut1;          // reuse
 
-    // ================= CPU =================
-    reg [3:0] acc;
-    reg [2:0] pc;
-    reg       flag_z, flag_c;
-    reg [7:0] ir;
-    reg [1:0] state;
+    // -----------------------------
+    // Inputs
+    // -----------------------------
+    wire a0 = ui_in[0];
+    wire b0 = ui_in[1];
 
-    reg [3:0] mem_data;
-    reg [3:0] alu_out;
-    reg       alu_carry;
+    wire a1 = ui_in[2];
+    wire b1 = ui_in[3];
 
-    // FSM states (UPDATED)
-    localparam FETCH  = 2'b00;
-    localparam DECODE = 2'b01;
-    localparam EXEC   = 2'b10;
-    localparam WB     = 2'b11;
-
-    // Decode
-    wire [2:0] opcode  = ir[7:5];
-    wire [3:0] operand = ir[3:0];
-
-    // Opcodes
-    localparam NOP = 3'b000;
-    localparam LDA = 3'b001;
-    localparam STA = 3'b010;
-    localparam ADD = 3'b011;
-    localparam SUB = 3'b100;
-    localparam JMP = 3'b101;
-    localparam JZ  = 3'b110;
-    localparam JC  = 3'b111;
-
-    // ============================================================
-    // RESET + INIT
-    // ============================================================
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            // CPU
-            acc <= 0;
-            pc <= 0;
-            flag_z <= 0;
-            flag_c <= 0;
-            ir <= 0;
-            state <= FETCH;
-            mem_data <= 0;
-            alu_out <= 0;
-            alu_carry <= 0;
-
-            // Instruction memory
-            instr_mem[0] <= 8'b00100000;
-            instr_mem[1] <= 8'b01100001;
-            instr_mem[2] <= 8'b01000000;
-            instr_mem[3] <= 8'b10100000;
-            instr_mem[4] <= 0;
-            instr_mem[5] <= 0;
-            instr_mem[6] <= 0;
-            instr_mem[7] <= 0;
-
-            // Data memory
-            data_mem[0]  <= 0;
-            data_mem[1]  <= 1;
-            data_mem[2]  <= 0;
-            data_mem[3]  <= 0;
-            data_mem[4]  <= 0;
-            data_mem[5]  <= 0;
-            data_mem[6]  <= 0;
-            data_mem[7]  <= 0;
-            data_mem[8]  <= 0;
-            data_mem[9]  <= 0;
-            data_mem[10] <= 0;
-            data_mem[11] <= 0;
-            data_mem[12] <= 0;
-            data_mem[13] <= 0;
-            data_mem[14] <= 0;
-            data_mem[15] <= 0;
-
-            // Loader
-            shift_reg <= 0;
-            bit_count <= 0;
-            load_addr <= 0;
-            load_clk_prev <= 0;
-        end else begin
-
-            // ================= SERIAL LOADER =================
-            load_clk_prev <= load_clk;
-
-            if (load_mode) begin
-                if (load_clk && !load_clk_prev) begin
-                    shift_reg <= {shift_reg[6:0], data_in};
-                    bit_count <= bit_count + 1;
-
-                    if (bit_count == 3'd7) begin
-                        instr_mem[load_addr] <= {shift_reg[6:0], data_in};
-                        load_addr <= load_addr + 1;
-                        bit_count <= 0;
-                    end
-                end
-            end else begin
-                bit_count <= 0;
-                load_addr <= 0;
-            end
-
-            // ================= CPU =================
-            if (ena && !load_mode) begin
-                case (state)
-
-                    // FETCH
-                    FETCH: begin
-                        ir <= instr_mem[pc];
-                        state <= DECODE;
-                    end
-
-                    // NEW: DECODE (stabilization stage)
-                    DECODE: begin
-                        state <= EXEC;
-                    end
-
-                    // EXEC
-                    EXEC: begin
-                        mem_data <= data_mem[operand];
-
-                        case (opcode)
-                            JMP: pc <= operand[2:0];
-                            JZ:  pc <= flag_z ? operand[2:0] : pc + 1;
-                            JC:  pc <= flag_c ? operand[2:0] : pc + 1;
-                            default: pc <= pc + 1;
-                        endcase
-
-                        state <= WB;
-                    end
-
-                    // WRITEBACK
-                    WB: begin
-                        case (opcode)
-
-                            LDA: acc <= mem_data;
-
-                            ADD: begin
-                                {flag_c, alu_out} <= acc + mem_data;
-                                acc <= alu_out;
-                                flag_z <= (alu_out == 0);
-                            end
-
-                            SUB: begin
-                                {flag_c, alu_out} <= acc - mem_data;
-                                acc <= alu_out;
-                                flag_z <= (alu_out == 0);
-                            end
-
-                            STA: data_mem[operand] <= acc;
-
-                        endcase
-
-                        state <= FETCH;
-                    end
-
-                endcase
-            end
+    // -----------------------------
+    // LUT function
+    // -----------------------------
+    function [0:0]lut2_func;
+        input [3:0] lut;
+        input a, b;
+        begin
+            case ({b,a})
+                2'b00: lut2_func = lut[0];
+                2'b01: lut2_func = lut[1];
+                2'b10: lut2_func = lut[2];
+                2'b11: lut2_func = lut[3];
+                default: lut2_func = 1'b0;
+            endcase
         end
-    end
+    endfunction
 
-    // ============================================================
-    // OUTPUTS
-    // ============================================================
-    assign uo_out  = rst_n ? {4'b0000, acc} : 8'b0;
-    assign uio_out = {3'b000, flag_c, flag_z, pc};
-    assign uio_oe  = 8'hFF;
+    // -----------------------------
+    // PLC0 & PLC1
+    // -----------------------------
+    wire p0 = lut2_func(lut0, a0, b0);
+    wire p1 = lut2_func(lut1, a1, b1);
+
+    // -----------------------------
+    // PLC2
+    // -----------------------------
+    wire p2 = lut2_func(lut2, p0, p1);
+
+    // -----------------------------
+    // PLC3
+    // -----------------------------
+    wire p3 = lut2_func(lut3, p1, p2);
+
+    // -----------------------------
+    // Output
+    // -----------------------------
+    assign uo_out = {4'b0, p3, p2, p1, p0};
 
 endmodule
+
+`default_nettype wire
